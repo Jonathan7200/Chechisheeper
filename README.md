@@ -13,4 +13,6 @@ run
 ```
 curl localhost:8080/state | python3 DiagramGenerator.py
 ```
-to get latest update of the board, which is from either spawning, dropping or rotating.
+to get latest diagram update of the board, which is from either spawning, dropping or rotating.
+
+/state gives a json with all the pieces.
