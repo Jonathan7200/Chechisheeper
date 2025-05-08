@@ -1,34 +1,61 @@
 const express   = require('express');
-const url      = require('url');
 const http      = require('http');
 const WebSocket = require('ws');
 
 const app    = express();
 const server = http.createServer(app);
+// still listen on /ws, but no query params any more
 const wss    = new WebSocket.Server({ server, path: '/ws' });
 
+// keep track of all open WS connections
+const clients = new Set();
+
 let latestState = null;
-const gameStates = new Map();
 
-wss.on('connection', (ws, req) => {
-    const {query} = url.parse(req.url, true);
-    const gameId = query.gameId;
-    if (!gameId) return ws.close(4000, 'gameId is required');
-    ws.gameId = gameId;
-    console.log(`New connection for gameId: ${gameId}`);
+wss.on('connection', ws => {
+  // add new client to our set
+  clients.add(ws);
 
-    ws.on('message', raw => {
-        console.log(`[WS][${gameId}]`, raw);
-        const state = JSON.parse(raw);
-        gameStates.set(gameId, state);
-    })
+  ws.on('message', raw => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type === 'state') {
+        latestState = msg.payload;
+        console.log('Received state:', latestState);
+      }
+    } catch (err) {
+      console.error('Invalid JSON:', err);
+    }
   });
 
-// HTTP GET for your agent
-app.get('/state/:gameId', (req, res) => {
-    const state = gameStates.get(req.params.gameId);
-    if (!state) return res.status(404).send('Game state not found');
-    res.json(state);
+  ws.on('close', () => {
+    // remove closed client
+    clients.delete(ws);
+  });
+});
+
+// HTTP GET to fetch the latest board state
+app.get('/state', (req, res) => {
+  if (!latestState) {
+    return res.status(404).send('No game state available');
+  }
+  res.json(latestState);
+});
+
+// HTTP POST to push a command to all connected Unity clients
+// Body should be JSON: { "command": "moveleft", "parameter": 0 }
+app.post('/command', express.json(), (req, res) => {
+  const { command, parameter = 0 } = req.body;
+  const msg = JSON.stringify({
+    type:    'command',
+    payload: { command, parameter }
+  });
+  clients.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(msg);
+    }
+  });
+  res.sendStatus(204);
 });
 
 const PORT = 3250;
