@@ -71,8 +71,8 @@ For one command with parameters
 For multiple commands
 ```{json}
 [
-    {"command" : "moveleft"}
-    {"command" : "rotate"}
+    {"command" : "moveleft"},
+    {"command" : "rotate"},
     {"command" : "harddrop"}
 ]
 ```
