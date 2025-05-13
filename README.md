@@ -20,16 +20,16 @@ node server.js
 ### GET ```/state```
 Returns the latest game state.
 ```{bash}
-curl http://localhost:3250/state
+http://localhost:3250/state
 ```
 - 200 OK: Returns JSON with State of the Board
 - 404 Not Found: Response body: No game state available
 
 ### POST ```/command```
-Sends commands to Open Game
+Sends commands to Open Game.
 
 ```{bash}
-curl -X POST http://localhost:3250/command -H "Content-Type: application/json" -d "{\"command\":\"moveleft\",\"parameter\":0}"
+http://localhost:3250/command
 ```
 
 - 204 No Content: Command successfully sent.
@@ -39,12 +39,40 @@ Use these two endpoints to pull game state and push control commands.
 ## Available Commands
 These are the following commands via ```POST /command```
 
-| Command         | Description                                          |
-|-----------------|------------------------------------------------------|
-| `moveleft`        | Move the active tetromino one cell to the left       |
-| `moveright`       | Move the active tetromino one cell to the right      |
-| `softdrop`        | Soft-drop the active tetromino                        |
-| `harddrop`        | Hard-drop the active tetromino                        |
-| `rotate`          | Rotate the active tetromino clockwise                 |
-| `rotateccw`       | Rotate the active tetromino counterclockwise          |
-| `hold`            | Hold the current tetromino                            |
+| Command         | Description                                          | Parameters |
+|-----------------|------------------------------------------------------|------------|
+| `moveleft`        | Move the active tetromino one cell to the left       | `None`|
+| `moveright`       | Move the active tetromino one cell to the right      | `None` |
+| `softdrop`        | Soft-drop the active tetromino                        | `None` |
+| `harddrop`        | Hard-drop the active tetromino                        | `None` |
+| `rotate`          | Rotate the active tetromino clockwise                 | `None` |
+| `rotateccw`       | Rotate the active tetromino counterclockwise          | `None` |
+| `hold`            | Hold the current tetromino                            | `None` |
+| `reveal`          | Reveal specific tetromino                             | `x, y` |
+| `flag`            | Flag specific tetromino                               | `x, y` |
+| `chord`           | Reveal Chord for specific tetromino                   | `x, y` |
+|`chordflag`        | Flag Chord for specific tetromino                     | `x, y` |
+
+
+## Example
+For one command with no parameters
+```{json}
+{"command" : "moveleft"}
+```
+
+For one command with parameters
+```{json}
+{   
+    "command" : "flag", 
+    "x" : 0,
+    "y" : 0
+}
+```
+For multiple commands
+```{json}
+[
+    {"command" : "moveleft"}
+    {"command" : "rotate"}
+    {"command" : "harddrop"}
+]
+```

@@ -42,19 +42,25 @@ app.get('/state', (req, res) => {
   res.json(latestState);
 });
 
-// HTTP POST to push a command to all connected Unity clients
-// Body should be JSON: { "command": "moveleft", "parameter": 0 }
+// HTTP POST to push one or more commands to all connected Unity clients
+// Body may be either { "command": "..."}
+// or [ { "command": "..."}, { … } ]
 app.post('/command', express.json(), (req, res) => {
-  const { command, parameter = 0 } = req.body;
-  const msg = JSON.stringify({
-    type:    'command',
-    payload: { command, parameter }
+  // Turn req.body into an array of commands
+  const commandList = Array.isArray(req.body) ? req.body : [req.body];
+
+  // Broadcast each command in turn
+  commandList.forEach(cmd => {
+    const msg = JSON.stringify({
+      type:    'command',
+      payload: cmd    
+    });
+    clients.forEach(ws =>
+      ws.readyState === WebSocket.OPEN && ws.send(msg)
+    );
   });
-  clients.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
-    }
-  });
+
+  // No content
   res.sendStatus(204);
 });
 
