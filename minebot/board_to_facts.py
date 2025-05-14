@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 import json, sys
 
 tiles = json.load(sys.stdin).get("board", [])
@@ -15,6 +15,6 @@ for t in tiles:
     elif mines >= 0:
         state = f"number({mines})"
     else:
-        continue  # skip bad data
+        continue 
 
     print(f"cell({x},{y},{state}).")
