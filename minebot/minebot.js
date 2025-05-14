@@ -28,7 +28,7 @@ async function loop () {
 
   console.log(`[minebot] Received ${state.board.length} tiles`);
 
-  // --- JSON → Prolog facts ---
+  // JSON --> Prolog facts 
   const py = spawn('py', ['board_to_facts.py']);
   py.stdin.write(JSON.stringify(state));
   py.stdin.end();
@@ -46,7 +46,7 @@ async function loop () {
 
   console.log('[minebot] Generated facts:\n', facts);
 
-  // --- Run Prolog ---
+  // Run Prolog 
   const cleanedFacts = facts.trim().split('\n').join(' ');
   const query = `
     consult('minesweeper.pl'),
