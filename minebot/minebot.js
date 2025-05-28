@@ -1,22 +1,22 @@
 import { spawn } from 'child_process';
 import fetch     from 'node-fetch';
 
-const URL = 'http://localhost:3250';
-const INTERVAL = 500;
+const URL      = process.env.TSW_URL ?? 'http://localhost:3250';
+const INTERVAL = 500;            // ms
 
 async function loop () {
-  console.log('[minebot] Tick...');
+  console.log('[minebot] Tick…');
 
+  /* game state  */
   let res;
   try {
     res = await fetch(`${URL}/state`);
   } catch (err) {
-    console.error('[minebot] Failed to fetch /state:', err.message);
+    console.error('[minebot] Cannot reach /state →', err.message);
     return;
   }
-
   if (res.status !== 200) {
-    console.log(`[minebot] Server returned status ${res.status}`);
+    console.log(`[minebot] /state → ${res.status}`);
     return;
   }
 
@@ -26,69 +26,53 @@ async function loop () {
     return;
   }
 
-  console.log(`[minebot] Received ${state.board.length} tiles`);
-
-  // JSON --> Prolog facts 
+  /* JSON into Prolog facts  */
   const py = spawn('py', ['board_to_facts.py']);
   py.stdin.write(JSON.stringify(state));
   py.stdin.end();
 
   let facts = '';
-  for await (const chunk of py.stdout) {
-    facts += chunk.toString();
-  }
+  for await (const chunk of py.stdout) facts += chunk.toString();
+  await new Promise(r => py.on('close', r));
 
-  await new Promise((r) => py.on('close', r));
-  if (!facts.includes('cell')) {
-    console.log('[minebot] No facts generated.');
+  if (!facts.includes('cell(')) {
+    console.log('[minebot] No facts produced.');
     return;
   }
 
-  console.log('[minebot] Generated facts:\n', facts);
-
-  // Run Prolog 
-  const cleanedFacts = facts.trim().split('\n').join(' ');
+  /*  Run Prolog  */
   const query = `
-    consult('minesweeper.pl'),
-    ${cleanedFacts},
-    next_action(A), writeln(A), halt.
+      consult('minesweeper.pl'),
+      ${facts.trim().split('\n').join(' ')},
+      next_action(A), writeln(A), halt.
   `;
-
   const pl = spawn('swipl', ['-q', '-g', query]);
 
   let move = '';
-  for await (const chunk of pl.stdout) {
-    move += chunk.toString();
-  }
-
-  await new Promise((r) => pl.on('close', r));
+  for await (const chunk of pl.stdout) move += chunk.toString();
+  await new Promise(r => pl.on('close', r));
   move = move.trim();
 
   if (!move || move === 'no_move') {
     console.log('[minebot] No move decided.');
     return;
   }
+  console.log('[minebot] Move →', move);
 
-  console.log('[minebot] Decided move:', move);
+  const [cmd, x, y] = move.replace(/[()]/g, '').split(',');
+  let body;
 
-  const parts = move.replace(/[()]/g, '').split(',');
-  if (parts.length !== 3) {
-    console.log('[minebot] Invalid move format:', move);
-    return;
+  if (['reveal', 'flag', 'chord', 'chordflag'].includes(cmd)) {
+    body = { command: cmd, x: +x, y: +y };
+  } else {
+    body = { command: cmd };                
   }
-  const [cmd, x, y] = parts;
-
-  const body =
-    cmd === 'flag'
-      ? { command: 'flag', parameter: [+x, +y] }
-      : { command: 'click', parameter: [+x, +y] };
-
-  console.log('[minebot] Sending command:', body);
+  console.log('[minebot] POST /command →', body);
 
   await fetch(`${URL}/command`, {
-    method: 'POST',
+    method : 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body   : JSON.stringify(body)
   });
 }
 

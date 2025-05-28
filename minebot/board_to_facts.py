@@ -1,20 +1,30 @@
 
 import json, sys
 
-tiles = json.load(sys.stdin).get("board", [])
+data  = json.load(sys.stdin)
+tiles = []
+
+for key in ("board", "floorTiles", "leftWallTiles", "rightWallTiles"):
+    tiles.extend(data.get(key, []))
+
 for t in tiles:
-    x, y        = t["x"], t["y"]
-    flagged     = t.get("isFlagged", False)
-    revealed    = t.get("isRevealed", False)
-    mines       = t.get("nearbyMines", -1)
+    if t.get("aura") == "blocked": # skip outside 
+        continue
+    x, y     = t["x"], t["y"]
+    flagged  = t["isFlagged"]
+    revealed = t["isRevealed"]
+    mines    = t["nearbyMines"]
+    
+    if not (-1 <= y <= 22):         
+        continue
+    if not (-1 <= x <= 10):
+        continue
 
     if flagged:
         state = "flagged"
     elif not revealed:
         state = "hidden"
-    elif mines >= 0:
-        state = f"number({mines})"
     else:
-        continue 
+        state = f"number({mines})"
 
     print(f"cell({x},{y},{state}).")
