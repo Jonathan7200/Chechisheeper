@@ -150,3 +150,12 @@ class MinesweeperAgent:
                 s for s in self.knowledge
                 if s.cells and 0 <= s.count <= len(s.cells)
             ]
+    
+    def reset(self):
+        """
+        Reset the agent's knowledge base.
+        """
+        self.moves_made = set()
+        self.safes = set()
+        self.mines = set()
+        self.knowledge = []

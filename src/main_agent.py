@@ -38,6 +38,12 @@ def distribute(state, prev_state=None):
     # skip if no new JSON
     if not state or state == prev_state:
         return prev_state
+    
+    prev_cleared = prev_state.get("linesCleared", 0) if prev_state else 0
+    current_cleared = state.get("linesCleared", 0)
+    if current_cleared > prev_cleared:
+        print(f"[MainAgent] Lines cleared: {current_cleared - prev_cleared}")
+        ms_agent.reset()
     try:
         all_tiles = extract_all_tiles(state)
         neighbors_map = compute_neighbors(all_tiles)
