@@ -1,5 +1,21 @@
 # Chechisheeper
 
+
+**Team Members**: Jemma Arona, Sean Estrella, Jonathan Flores, Jonathan Jara  
+**Course**: CSC 481 - Knowledge Based Systems
+**Instructor**: Dr. Rodrigo Canaan
+
+## Project Summary
+
+Chechisheeper is a knowledge-based agent for Tetrisweeper, a hybrid game combining **Tetris** and **Minesweeper** mechanics. 
+Our system integrates real-time decision-making and logical reasoning, managing the dynamic Tetris board while finding safe cells and mines using Minesweeper-style clues.
+
+The bot is split into:
+- A **Minesweeper Agent** (Python) that handles safe/mine inference.
+- A **Tetris Agent** for handling Tetris placements.
+- A **Node.js server** that connects to the Tetrisweeper game and mediates state/command communication.
+
+
 ## Setup
 Clone or pull the repository and install dependencies:
 
@@ -15,6 +31,26 @@ node server.js
 ```
 
 > **Important**: Make sure the server is running *before* pressing **PLAY MARATHON** on the modified [Tetrisweeper](https://tetris.goldfishjonny.com/). When the game initializes it will connect to ws://localhost:3250/ws and begin sending state updates; after that you can push commands at any time using the /command endpoint. The PLAY MARATHON command will be added later, so the websocket connects the moment it is up.
+
+
+Start Minesweeper Agent:
+```{bash}
+python main_agent.py
+```
+
+
+## Reproducing Results
+
+Launch main_agent.py with the server running.
+Play the game in MARATHON mode and track how many lines are cleared automatically.
+The system resets logical knowledge on each line clear (linesCleared change).
+You can monitor the agent’s reasoning via terminal logs.
+
+
+## Resources and Acknowledgments
+
+Tetrisweeper Game by Kertis Jones
+https://github.com/KertisJones/minesweeper 
 
 ## HTTP Endpoints
 ### GET ```/state```
