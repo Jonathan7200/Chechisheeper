@@ -1,13 +1,77 @@
 import time
 import requests
 import json
+from enum import Enum
+import numpy as np
 from minesweeper_agent import MinesweeperAgent
+from tetrisagents import DownstackAgent
 
 API_STATE = "http://localhost:3250/state"
 API_COMMAND = "http://localhost:3250/command"
 POLL = 0.1
 
 ms_agent = MinesweeperAgent()
+
+
+class Modes(Enum):  # ordered by complexity
+    DOWNSTACK = 0   # maintain low flat board. plug holes. fill lines.
+    STALL = 1       # delay lock as long as possible (let fall, rotate/move, hold). revert if board is fully swept.
+    TETRI = 2       # stack pieces in C1-C9. if ≥4 rows ready, fill C10 with i-piece and switch to stall mode.
+    LOOP = 3        # use repeatable 7-bag setup. (tbd, probably pj-dpc.)
+    RECOVER = 4     # maximize region that gets swept before lock, esp sweeping from top.
+tetris_agents = [None, None, None, None, None]
+
+
+def scan_board_from_state(state):
+    grid = np.zeros((22, 10), dtype=int)
+
+    for tile in state.get("board", []):
+        x, y = tile["x"], tile["y"]
+        if 0 <= x < 10 and 0 <= y < 22:
+            grid[y, x] = 1
+    active_piece = state.get("currentPiece", {}).get("type", "")
+    active_piece = active_piece[0].lower()
+    
+    held_piece = state.get("heldPiece", {}).get("type", "")
+    if held_piece.endswith("Tetromino"):
+        held_piece = held_piece[0].lower()
+    else:
+        held_piece = None
+    
+    next_list = []
+    next_piece = state.get("nextPiece", {}).get("type", "")
+    if next_piece:
+        next_piece = next_piece[0].lower()
+        next_list.append(next_piece)
+    return grid, active_piece, held_piece, next_list
+    
+
+def select_mode(field_state):
+    return DownstackAgent()  # For now, always use DownstackAgent
+
+def tetris_commands(state, agent):
+    field_state, active_piece, held_piece, next_list = scan_board_from_state(state)
+    piece_active = True
+    hold_available = True
+    agent = select_mode(field_state)
+    agent.config(field_state, hold_available, active_piece, held_piece, next_list)
+    commands = []
+    print(f"[MainAgent] Field state: {field_state}, Active piece: {active_piece}, Held piece: {held_piece}, Next pieces: {next_list}")
+    while piece_active:
+        move = agent.suggest_action(active_piece)
+    if move == "l":
+        commands.append({"command": "moveLeft"})
+    elif move == "r":
+        commands.append({"command": "moveRight"})
+    elif move == "d":
+        commands.append({"command": "softDrop"})
+    elif move == "c":
+        commands.append({"command": "rotateCW"})
+    elif move == "a":
+        commands.append({"command": "rotateCCW"})
+    else:
+        pass
+    return commands
 
 def fetch_state():
     """Fetch and parse JSON state; return None on invalid JSON or empty response."""
@@ -44,12 +108,18 @@ def distribute(state, prev_state=None):
     if current_cleared > prev_cleared:
         print(f"[MainAgent] Lines cleared: {current_cleared - prev_cleared}")
         ms_agent.reset()
+    
+    commands = []
     try:
         all_tiles = extract_all_tiles(state)
         neighbors_map = compute_neighbors(all_tiles)
         ms_agent.set_neighbors(neighbors_map)
         update_minesweeper(ms_agent, state)
-        commands = ms_commands(state, ms_agent)
+        ms_cmds = ms_commands(state, ms_agent)
+        commands.extend(ms_cmds)
+
+        tetris_cmds = tetris_commands(state, tetris_agents)
+        commands.extend(tetris_cmds)
         send_commands(commands)
     except Exception as e:
         print(f"[MainAgent] MinesweeperAgent error: {e}")
