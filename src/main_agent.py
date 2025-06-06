@@ -1,239 +1,133 @@
-import time
-import requests
-import json
-from enum import Enum
-import numpy as np
+from __future__ import annotations
+import time, logging, argparse, json, requests, numpy as np
 from minesweeper_agent import MinesweeperAgent
-from tetrisagents import DownstackAgent
+from tetrisagents      import DownstackAgent, plan_to_commands
 
-API_STATE = "http://localhost:3250/state"
+API_STATE   = "http://localhost:3250/state"
 API_COMMAND = "http://localhost:3250/command"
-POLL = 0.1
+POLL        = 0.10                # seconds
+
+cli = argparse.ArgumentParser()
+cli.add_argument("--debug-tetris", action="store_true")
+args = cli.parse_args()
+
+logging.basicConfig(level=logging.DEBUG, format="[%(name)s] %(message)s")
+log = logging.getLogger("Main")
 
 ms_agent = MinesweeperAgent()
 
+#  board helpers 
+def board_grid(st):
+    grid = np.zeros((22,10), int)
+    for t in st.get("board", []):
+        x,y = t["x"], t["y"]
+        if 0<=x<10 and 0<=y<22: grid[y,x]=1
 
-class Modes(Enum):  # ordered by complexity
-    DOWNSTACK = 0   # maintain low flat board. plug holes. fill lines.
-    STALL = 1       # delay lock as long as possible (let fall, rotate/move, hold). revert if board is fully swept.
-    TETRI = 2       # stack pieces in C1-C9. if ≥4 rows ready, fill C10 with i-piece and switch to stall mode.
-    LOOP = 3        # use repeatable 7-bag setup. (tbd, probably pj-dpc.)
-    RECOVER = 4     # maximize region that gets swept before lock, esp sweeping from top.
-tetris_agents = [None, None, None, None, None]
+    active = st.get("currentPiece", {}).get("type", "")
+    active = active[0].lower() if active else ""
 
+    held   = st.get("heldPiece", {}).get("type", "")
+    held   = held[0].lower() if held else ""
 
-def scan_board_from_state(state):
-    grid = np.zeros((22, 10), dtype=int)
+    nxt    = st.get("nextPiece", {}).get("type", "")
+    nxt    = nxt[0].lower() if nxt else ""
+    return grid, active, held, nxt
 
-    for tile in state.get("board", []):
-        x, y = tile["x"], tile["y"]
-        if 0 <= x < 10 and 0 <= y < 22:
-            grid[y, x] = 1
-    active_piece = state.get("currentPiece", {}).get("type", "")
-    active_piece = active_piece[0].lower()
-    
-    held_piece = state.get("heldPiece", {}).get("type", "")
-    if held_piece.endswith("Tetromino"):
-        held_piece = held_piece[0].lower()
-    else:
-        held_piece = None
-    
-    next_list = []
-    next_piece = state.get("nextPiece", {}).get("type", "")
-    if next_piece:
-        next_piece = next_piece[0].lower()
-        next_list.append(next_piece)
-    return grid, active_piece, held_piece, next_list
-    
+# Tetris  
+def tetris_cmds(state):
+    grid, active, held, nxt = board_grid(state)
+    if not active:                        # no falling piece
+        return []
+    agent = DownstackAgent()
+    agent.configure(grid, active, held=held, next_piece=nxt, dbg=args.debug_tetris)
+    cmds  = plan_to_commands(agent)
+    if args.debug_tetris:
+        log.debug("Tetris cmds: %s", cmds)
+    return cmds
 
-def select_mode(field_state):
-    return DownstackAgent()  # For now, always use DownstackAgent
-
-def tetris_commands(state, agent):
-    field_state, active_piece, held_piece, next_list = scan_board_from_state(state)
-    piece_active = True
-    hold_available = True
-    agent = select_mode(field_state)
-    agent.config(field_state, hold_available, active_piece, held_piece, next_list)
-    commands = []
-    print(f"[MainAgent] Field state: {field_state}, Active piece: {active_piece}, Held piece: {held_piece}, Next pieces: {next_list}")
-    while piece_active:
-        move = agent.suggest_action(active_piece)
-    if move == "l":
-        commands.append({"command": "moveLeft"})
-    elif move == "r":
-        commands.append({"command": "moveRight"})
-    elif move == "d":
-        commands.append({"command": "softDrop"})
-    elif move == "c":
-        commands.append({"command": "rotateCW"})
-    elif move == "a":
-        commands.append({"command": "rotateCCW"})
-    else:
-        pass
-    return commands
-
-def fetch_state():
-    """Fetch and parse JSON state; return None on invalid JSON or empty response."""
-    try:
-        r = requests.get(API_STATE, timeout=1)
-        r.raise_for_status()
-        if not r.text:
-            return None
-        return r.json()
-    except (requests.RequestException, ValueError) as e:
-        print(f"[MainAgent] Fetch error or invalid JSON: {e}")
-        return None
-
-def send_commands(commands):
-    """Send commands to the server."""
-    if not commands:
-        return
-    commands_json = json.dumps(commands)
-    headers = {"Content-Type": "application/json"}
-    try:
-        response = requests.post(API_COMMAND, data=commands_json, headers=headers, timeout=1)
-        response.raise_for_status()
-        print(f"[MainAgent] Commands sent successfully: {commands}")
-    except requests.RequestException as e:
-        print(f"[MainAgent] Error sending commands: {e}")
-
-def distribute(state, prev_state=None):
-    # skip if no new JSON
-    if not state or state == prev_state:
-        return prev_state
-    
-    prev_cleared = prev_state.get("linesCleared", 0) if prev_state else 0
-    current_cleared = state.get("linesCleared", 0)
-    if current_cleared > prev_cleared:
-        print(f"[MainAgent] Lines cleared: {current_cleared - prev_cleared}")
-        ms_agent.reset()
-    
-    commands = []
-    try:
-        all_tiles = extract_all_tiles(state)
-        neighbors_map = compute_neighbors(all_tiles)
-        ms_agent.set_neighbors(neighbors_map)
-        update_minesweeper(ms_agent, state)
-        ms_cmds = ms_commands(state, ms_agent)
-        commands.extend(ms_cmds)
-
-        tetris_cmds = tetris_commands(state, tetris_agents)
-        commands.extend(tetris_cmds)
-        send_commands(commands)
-    except Exception as e:
-        print(f"[MainAgent] MinesweeperAgent error: {e}")
-    return state
-
-def extract_all_tiles(state):
-    """
-    Gather all tile coordinates from leftWallTiles, rightWallTiles, floorTiles, and board.
-    """
-    current_piece_cells = {
-        (c["x"], c["y"])
-        for c in state.get("currentPiece", {}).get("cells", [])
-    }
-    tiles = set()
-    for key in ("leftWallTiles", "rightWallTiles", "floorTiles", "board"):
-        for t in state.get(key, []):
-            tile = (t["x"], t["y"])
-            if tile not in current_piece_cells:
-                tiles.add(tile)
+#  Minesweeper 
+def all_tiles(st):
+    falling = {(c["x"],c["y"]) for c in st.get("currentPiece",{}).get("cells",[])}
+    tiles   = set()
+    for k in ("leftWallTiles","rightWallTiles","floorTiles","board"):
+        for t in st.get(k,[]):
+            xy = (t["x"],t["y"])
+            if xy not in falling:
+                tiles.add(xy)
     return tiles
 
-def compute_neighbors(all_tiles):
-    """
-    Precompute the 8-way adjacency for every cell in all_tiles.
-    """
-    neigh = {}
-    for x, y in all_tiles:
-        neigh[(x, y)] = {
-            (x + dx, y + dy)
-            for dx in (-1, 0, 1)
-            for dy in (-1, 0, 1)
-            if not (dx == 0 and dy == 0)
-            and (x + dx, y + dy) in all_tiles
-        }
-    return neigh
+def neighbours(ts):
+    n={}
+    for x,y in ts:
+        n[(x,y)] = {(x+dx,y+dy)
+                    for dx in (-1,0,1) for dy in (-1,0,1)
+                    if (dx or dy) and (x+dx,y+dy) in ts}
+    return n
 
-def extract_clues(state):
-    """
-    Pull clues from 'board', 'floorTiles', 'leftWallTiles', and 'rightWallTiles',
-    skipping any cells under currentPiece.
-    """
-    current_piece_cells = {
-        (c["x"], c["y"])
-        for c in state.get("currentPiece", {}).get("cells", [])
-    }
+def clues(st):
+    falling = {(c["x"],c["y"]) for c in st.get("currentPiece",{}).get("cells",[])}
+    d={}
+    for k in ("floorTiles","leftWallTiles","rightWallTiles","board"):
+        for t in st.get(k,[]):
+            if t.get("isRevealed") and (t["x"],t["y"]) not in falling:
+                d[(t["x"],t["y"])] = t["nearbyMines"]
+    return d
 
-    clues = {}
-    for key in ("floorTiles", "leftWallTiles", "rightWallTiles", "board"):
-        for tile in state.get(key, []):
-            # Only use tiles that have actually been revealed
-            if not tile.get("isRevealed", False):
-                continue
+def revealed(st):
+    r=set()
+    for k in ("leftWallTiles","rightWallTiles","floorTiles","board"):
+        r.update((t["x"],t["y"]) for t in st.get(k,[]) if t.get("isRevealed"))
+    return r
 
-            coord = (tile["x"], tile["y"])
-            # Skip if it's under the falling piece
-            if coord in current_piece_cells:
-                continue
+def flagged(st):
+    f=set()
+    for k in ("leftWallTiles","rightWallTiles","floorTiles","board"):
+        f.update((t["x"],t["y"]) for t in st.get(k,[]) if t.get("isFlagged"))
+    return f
 
-            # Record the clue
-            clues[coord] = tile["nearbyMines"]
+def ms_cmds(st):
+    # update MS agent knowledge
+    ms_agent.set_neighbors(neighbours(all_tiles(st)))
+    for xy,n in clues(st).items():
+        ms_agent.add_knowledge(xy,n)
 
-    return clues
+    rev = revealed(st)
+    flg = flagged(st)
+    cmds=[]
+    for x,y in ms_agent.safes - rev:
+        cmds.append({"command":"reveal","x":x,"y":y})
+    for x,y in ms_agent.mines - flg:
+        cmds.append({"command":"flag","x":x,"y":y})
+    if cmds and args.debug_tetris:
+        log.debug("MS cmds: %s", cmds)
+    return cmds
 
-def update_minesweeper(agent, state):
-    """
-    Extract all board clues and call add_knowledge for each.
-    """
-    clues = extract_clues(state)
-    for cell, count in clues.items():
-        agent.add_knowledge(cell, count)
+def fetch_state():
+    try:
+        r=requests.get(API_STATE,timeout=1); r.raise_for_status()
+        return r.json() if r.text else None
+    except (requests.RequestException, json.JSONDecodeError) as e:
+        log.error("fetch_state %s", e)
+        return None
 
-def get_revealed_cells(state):
-    """
-    Extract all revealed cells from the state.
-    """
-    revealed = set()
-    for key in ("leftWallTiles", "rightWallTiles", "floorTiles", "board"):
-        for tile in state.get(key, []):
-            if tile.get("isRevealed", False):
-                revealed.add((tile["x"], tile["y"]))
-    return revealed
+def post_cmds(cmds):
+    if not cmds: return
+    try:
+        requests.post(API_COMMAND, json=cmds, timeout=1).raise_for_status()
+        log.debug("POST %s", cmds)
+    except requests.RequestException as e:
+        log.error("post_cmds %s", e)
 
-def get_flagged_cells(state):
-    """
-    Extract all flagged cells from the state.
-    """
-    flagged = set()
-    for key in ("leftWallTiles", "rightWallTiles", "floorTiles", "board"):
-        for tile in state.get(key, []):
-            if tile.get("isFlagged", False):
-                flagged.add((tile["x"], tile["y"]))
-    return flagged
-    
-
-def ms_commands(state, agent):
-    commands = []
-    revealed = get_revealed_cells(state)
-    flagged = get_flagged_cells(state)
-    for cell in agent.safes:
-        if cell not in revealed:
-            x, y = cell
-            commands.append({"command": "reveal", "x": x, "y": y})
-    for cell in agent.mines:
-        if cell not in flagged:
-            x, y = cell
-            commands.append({"command": "flag", "x": x, "y": y})
-    return commands
-
+# main loop 
 def main():
-    last = None
+    prev = None
     while True:
-        state = fetch_state()
-        last = distribute(state, last)
+        st = fetch_state()
+        if st and st != prev:
+            cmds = ms_cmds(st) + tetris_cmds(st)
+            post_cmds(cmds)
+            prev = st
         time.sleep(POLL)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

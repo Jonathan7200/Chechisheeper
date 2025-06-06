@@ -1,69 +1,85 @@
+
+
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from pathfinding import find_all_paths, piece_squares
-# from server import move_l, move_r, soft_drop, hard_drop, rotate_cw, rotate_ccw, hold, wait
+from typing import List, Dict
 import numpy as np
+
+from pathfinding import find_all_paths, piece_squares  
+CMD = {                       
+    "l": "moveleft",
+    "r": "moveright",
+    "d": "softdrop",
+    "c": "rotate",
+    "a": "rotateccw",
+    "h": "hold",
+}
+
+def plan_to_commands(agent) -> List[Dict[str, str]]:
+    return [{"command": CMD[ch]} for ch in iter(agent.next_letter, None)]
 
 class Agent(ABC):
     @abstractmethod
-    def config(self, field_state: np.ndarray, hold_available: bool, active_piece: str, held_piece: str, next_list: list):
-        pass
+    def config(self, field_state: np.ndarray, hold_available: bool,
+            active_piece: str, held_piece: str, next_list: list): ...
     @abstractmethod
-    def suggest_action(self, active_piece):
-        pass
+    def suggest_action(self, active_piece): ...
 
 class DownstackAgent(Agent):
-    move_plan = ""
-    ind = 0
+    def __init__(self):
+        self.move_plan: str = ""
+        self.idx: int = 0
 
-    move_methods = {"l": None,  # move_l,
-                    "r": None,  # move_r,
-                    "d": None,  # soft_drop,
-                    "c": None,  # rotate_cw,
-                    "a": None}  # rotate_ccw}
-    def config(self, field_state, hold_available, active_piece, held_piece, next_list):
-        f = find_all_paths(field_state, 't')
-        min_score = 2048
-        min_key = None
-        for k in reversed(f.keys()):
-            # print(k, end=" ")
-            grid2 = np.copy(field_state)
-            for (i, j) in piece_squares['t']:
-                if k[2] == 0:
-                    grid2[k[1] + j, k[0] + i] = 1
-                elif k[2] == 1:
-                    grid2[k[1] - i, k[0] + j] = 1
-                elif k[2] == 2:
-                    grid2[k[1] - j, k[0] - i] = 1
-                elif k[2] == 3:
-                    grid2[k[1] + i, k[0] - j] = 1
-            score = int(np.argmax(np.all(grid2 == 0, axis=1)))
-            score -= int(np.argmax(np.any(grid2 == 0, axis=1)))
-            if score == 0:
-                score = 3
-            # print(score, end=" ")
-            if score > min_score:
-                # print()
-                continue
-            score += 4 * len(np.where(grid2[:-1] < grid2[1:])[0])
-            # print(score)
-            if score < min_score:
-                min_score = score
-                min_key = k
-        # print(min_key, min_score, f[min_key])
-        self.move_plan = f[min_key]
-        self.ind = 0
+    def _best_for_piece(self, grid: np.ndarray, piece: str):
+        landings = find_all_paths(grid, piece)
+        best_key, best_score = None, 1e9
+        for k, path in landings.items():
+            g2 = grid.copy()
+            for i, j in piece_squares[piece]:
+                if k[2] == 0:   g2[k[1]+j, k[0]+i] = 1
+                elif k[2] == 1: g2[k[1]-i, k[0]+j] = 1
+                elif k[2] == 2: g2[k[1]-j, k[0]-i] = 1
+                else:           g2[k[1]+i, k[0]-j] = 1
+            top_row = int(np.argmax(np.all(g2 == 0, axis=1)))
+            holes   = np.sum((g2[:-1] == 0) & (g2[1:] == 1))
+            score   = top_row + 4 * holes
+            if score < best_score:
+                best_key, best_score = k, score
+        return landings[best_key], best_score
 
-    def suggest_action(self, active_piece):
-        if self.ind > len(self.move_plan):
+    def config(self, field_state, hold_available, active_piece,
+            held_piece="", next_list=None):
+        plan_active, score_active = self._best_for_piece(field_state, active_piece)
+
+        if hold_available and held_piece:
+            plan_hold, score_hold = self._best_for_piece(field_state, held_piece)
+            if score_hold < score_active:
+                plan_active = "h" + plan_hold 
+
+        self.move_plan = plan_active + "d"  
+        self.idx = 0
+
+    def next_letter(self):
+        if self.idx >= len(self.move_plan):
             return None
-        move = self.move_methods[self.move_plan[self.ind]]
-        self.ind += 1
-        return move
+        ch = self.move_plan[self.idx]
+        self.idx += 1
+        return ch
 
-# class StallAgent(Agent):
-#
-# class TetriAgent(Agent):
-#
-# class LoopAgent(Agent):
-#
-# class RecoverAgent(Agent):
+    def suggest_action(self, active_piece):     
+        return self.next_letter()
+
+def _configure_kw(self,
+                grid: np.ndarray,
+                active_piece: str,
+                *,
+                held: str = "",
+                next_piece: str = "",
+                dbg: bool = False,
+                hold_available: bool = True,
+                **_ignored):
+    self.config(grid, hold_available, active_piece, held, [next_piece] if next_piece else [])
+    if dbg:
+        print("[DownstackAgent] move_plan =", self.move_plan)
+
+DownstackAgent.configure = _configure_kw        
