@@ -27,16 +27,18 @@ piece_squares = {'o': [(0, 0), (1, 0), (0, 1), (1, 1)],
                  's': [(-1, 0), (0, 0), (0, 1), (1, 1)],
                  't': [(-1, 0), (0, 0), (1, 0), (0, 1)],
                  'z': [(0, 0), (1, 0), (-1, 1), (0, 1)]}
-acts = {'l': (-1, 0, 0),    # move left
-        'r': (1, 0, 0),     # move right
-        'd': (0, -1, 0),    # move down or wait
-        'c': (0, 0, 1),     # rotate clockwise
-        'a': (0, 0, 3)}     # rotate anti-clockwise
+acts = {'l': (-1, 0, 0),  # move left
+        'r': (1, 0, 0),  # move right
+        'd': (0, -1, 0),  # move down or wait
+        'c': (0, 0, 1),  # rotate clockwise
+        'a': (0, 0, 3)}  # rotate anti-clockwise
 
 
 def check_move(grid, piece, pos, a_kwd):
+    offset_checks = 5
     if piece == 'o':
         o_i = 'o'
+        offset_checks = 1
     elif piece == 'i':
         o_i = 'i'
     else:
@@ -70,7 +72,7 @@ def check_move(grid, piece, pos, a_kwd):
                 return False
         return x, y, r
     else:
-        for k in range(5):
+        for k in range(offset_checks):
             x = pos[0] + p_offsets[pos[2]][k][0] - p_offsets[r][k][0]
             y = pos[1] + p_offsets[pos[2]][k][1] - p_offsets[r][k][1]
             success = True
@@ -109,7 +111,7 @@ def find_all_paths(grid, piece):
                 # print(action, end="")
         res = check_move(grid, piece, pos, 'd')
         if not res:
-            finals[pos] = "dddddddddddddddddddddd"[:22-spawn_y] + searched[pos]
+            finals[pos] = "dddddddddddddddddddddd"[:22 - spawn_y] + searched[pos]
         elif res not in searched.keys():
             searched[res] = searched[pos] + 'd'
             queue.append(res)
