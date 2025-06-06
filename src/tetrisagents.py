@@ -56,7 +56,7 @@ class DownstackAgent(Agent):
             spread -= int(np.argmax(np.any(g2 == 0, axis=1)))
             fills = int(np.sum(np.all(g2 == 1, axis=1)))
             holes = np.sum((g2[:-1,] == 0) & (g2[1:,] == 1))
-            score = spread**1.3 + 3.5*holes - 2*fills
+            score = k[1] + spread**1.3 + 3.5*holes - 2*fills
             if score < best_score:
                 best_key, best_score = k, score
         return landings[best_key], best_score

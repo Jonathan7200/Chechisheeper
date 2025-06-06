@@ -136,17 +136,17 @@ def main():
     prev_cleared = 0
     while True:
         st = fetch_state()
+        if st:
+            curr_cleared = st.get("linesCleared", 0)
+            if curr_cleared > prev_cleared:
+                ms_agent.reset()
 
-        curr_cleared = st.get("linesCleared", 0)
-        if curr_cleared > prev_cleared:
-            ms_agent.reset()
+            if st != prev:
+                cmds = ms_cmds(st) + tetris_cmds(st)
+                post_cmds(cmds)
+                prev = st
 
-        if st and st != prev:
-            cmds = ms_cmds(st) + tetris_cmds(st)
-            post_cmds(cmds)
-            prev = st
-            
-        prev_cleared = curr_cleared
+            prev_cleared = curr_cleared
         time.sleep(POLL)
 
 
