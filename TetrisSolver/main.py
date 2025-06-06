@@ -5,7 +5,10 @@ import tetrisagents
 
 class Modes(Enum):  # ordered by complexity
     DOWNSTACK = 0   # maintain low flat board. plug holes. fill lines.
-  
+    # STALL = 1     # delay lock as long as possible (let fall, rotate/move, hold). revert if board is fully swept.
+    # TETRI = 2     # stack pieces in C1-C9. if ≥4 rows ready, fill C10 with i-piece and switch to stall mode.
+    # LOOP = 3      # use repeatable 7-bag setup. (tbd, probably pj-dpc.)
+    # RECOVER = 4   # maximize region that gets swept before lock, esp sweeping from top.
 
 
 def scan_board():
