@@ -42,8 +42,8 @@ python main_agent.py
 ## Reproducing Results
 
 Launch main_agent.py with the server running.
-Play the game in MARATHON mode and track how many lines are cleared automatically.
-The system resets logical knowledge on each line clear (linesCleared change).
+Play the game in MARATHON mode and press Shift to hold a piece.
+Track how many lines are cleared automatically.
 You can monitor the agent’s reasoning via terminal logs.
 
 
